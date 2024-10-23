@@ -12,7 +12,7 @@ function Install-NinjaRmm {
 
     $headers = @{
         "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
-}
+        }
     # Download the installer
     Invoke-WebRequest -Uri $uri -OutFile $outputPath -Headers $headers
 
@@ -26,9 +26,9 @@ $ninjaInstalled = Get-WmiObject -Class Win32_Product | Where-Object { $_.Name -l
 
 if ($ninjaInstalled) {
     Write-Host "NinjaRMMAgent is installed." -ForegroundColor Green
-} else {
+    } else {
     Write-Host "NinjaRMMAgent failed to install." -ForegroundColor Red
-}
+    }
 
 
 # Export the function for use
