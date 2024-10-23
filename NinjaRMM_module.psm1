@@ -18,4 +18,4 @@ function Install-NinjaRmm {
 }
 
 # Export the function for use
-Export-ModuleMember -Function Install-NinjaRmm
+#Export-ModuleMember -Function Install-NinjaRmm
