@@ -10,6 +10,9 @@ function Install-NinjaRmm {
     $uri = "https://ca.ninjarmm.com/agent/installer/30aff85f-d023-4a16-96cd-8be0975ac0af/ua488edmonton-6.0.1901-windows-installer.msi"
     $outputPath = "c:\temp\NinjaAgent.msi"
 
+    $headers = @{
+        "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
+}
     # Download the installer
     Invoke-WebRequest -Uri $uri -OutFile $outputPath -Headers $headers
 
