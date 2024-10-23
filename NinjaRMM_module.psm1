@@ -20,6 +20,8 @@ function Install-NinjaRmm {
     Start-Process -FilePath msiexec -ArgumentList "/i $outputPath /qn" -Wait
 }
 
+Start-Sleep -seconds 20
+
 $ninjaInstalled = Get-WmiObject -Class Win32_Product | Where-Object { $_.Name -like "NinjaRMMAgent" }
 
 if ($ninjaInstalled) {
