@@ -20,5 +20,14 @@ function Install-NinjaRmm {
     Start-Process -FilePath msiexec -ArgumentList "/i $outputPath /qn" -Wait
 }
 
+$ninjaInstalled = Get-WmiObject -Class Win32_Product | Where-Object { $_.Name -like "NinjaRMMAgent" }
+
+if ($ninjaInstalled) {
+    Write-Host "NinjaRMMAgent is installed." -ForegroundColor Green
+} else {
+    Write-Host "NinjaRMMAgent failed to install." -ForegroundColor Red
+}
+
+
 # Export the function for use
 #Export-ModuleMember -Function Install-NinjaRmm
