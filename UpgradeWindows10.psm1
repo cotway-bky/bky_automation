@@ -1,123 +1,109 @@
-function Upgrade-Windows10 {
+# Windows 11 Upgrade Check Script
+# This script checks system compatibility for a Windows 11 upgrade and optionally initiates the upgrade process.
+
+function Invoke-Windows11Upgrade {
     param (
-        [string]$OutputPath = "C:\temp",
-        [string]$Windows11InstallerUrl = "https://go.microsoft.com/fwlink/?linkid=2171764"
+        [string]$OutputFolder = "C:\temp",
+        [string]$UpgradeToolURL = "https://go.microsoft.com/fwlink/?linkid=2171764"
     )
 
-    # Ensure Output Directory Exists
-    if (-not (Test-Path -Path $OutputPath)) {
-        New-Item -Path $OutputPath -ItemType Directory | Out-Null
+    # Ensure output folder exists
+    if (-not (Test-Path -Path $OutputFolder)) {
+        New-Item -Path $OutputFolder -ItemType Directory | Out-Null
     }
 
-    # Initialize Variables
-    $exitCode = 0
+    # Set output file paths
+    $CapableFile = Join-Path -Path $OutputFolder -ChildPath "Capable.txt"
+    $NotCapableFile = Join-Path -Path $OutputFolder -ChildPath "NotCapable.txt"
+
+    # Remove previous files
+    Remove-Item -Path $CapableFile, $NotCapableFile -ErrorAction SilentlyContinue
+
+    # Compatibility check logic
+    $MinOSDiskSizeGB = 64
+    $MinMemoryGB = 4
+    $MinClockSpeedMHz = 1000
+    $MinLogicalCores = 2
+    $RequiredAddressWidth = 64
+
     $outObject = @{ returnCode = -2; returnResult = "FAILED TO RUN"; returnReason = ""; logging = "" }
-    
-    [int]$MinOSDiskSizeGB = 64
-    [int]$MinMemoryGB = 4
-    [Uint32]$MinClockSpeedMHz = 1000
-    [Uint32]$MinLogicalCores = 2
-    [Uint16]$RequiredAddressWidth = 64
 
-    $CapableFile = Join-Path $OutputPath "Capable.txt"
-    $NotCapableFile = Join-Path $OutputPath "NotCapable.txt"
+    function Update-ReturnCode {
+        param ([int]$ReturnCode)
+        switch ($ReturnCode) {
+            0 { if ($outObject.returnCode -eq -2) { $outObject.returnCode = $ReturnCode } }
+            1 { $outObject.returnCode = $ReturnCode }
+            -1 { if ($outObject.returnCode -ne 1) { $outObject.returnCode = $ReturnCode } }
+        }
+    }
 
-    # Remove prior instances of files
-    if (Test-Path -Path $CapableFile) { Remove-Item -Path $CapableFile -Recurse }
-    if (Test-Path -Path $NotCapableFile) { Remove-Item -Path $NotCapableFile -Recurse }
-
-    # Check Storage
     try {
+        # Storage Check
         $osDrive = Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty SystemDrive
         $osDriveSize = Get-WmiObject -Class Win32_LogicalDisk -Filter "DeviceID='$osDrive'" | Select-Object -ExpandProperty Size
-        $osDriveSizeGB = [math]::Floor($osDriveSize / 1GB)
-
-        if ($osDriveSizeGB -lt $MinOSDiskSizeGB) {
-            $outObject.returnCode = 1
-            $outObject.returnReason += "Insufficient disk space. "
-            $outObject.logging += "Storage check failed: $osDriveSizeGB GB available, $MinOSDiskSizeGB GB required. "
+        if ($osDriveSize / 1GB -lt $MinOSDiskSizeGB) {
+            Update-ReturnCode -ReturnCode 1
+            $outObject.logging += "Storage check failed. OS drive size: $($osDriveSize / 1GB)GB\n"
         }
-    } catch {
-        $outObject.returnCode = -1
-        $outObject.logging += "Storage check error: $_.Exception.Message. "
-    }
 
-    # Check Memory
-    try {
+        # Memory Check
         $memory = Get-WmiObject Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum | Select-Object -ExpandProperty Sum
-        $memoryGB = [math]::Floor($memory / 1GB)
-
-        if ($memoryGB -lt $MinMemoryGB) {
-            $outObject.returnCode = 1
-            $outObject.returnReason += "Insufficient memory. "
-            $outObject.logging += "Memory check failed: $memoryGB GB available, $MinMemoryGB GB required. "
+        if ($memory / 1GB -lt $MinMemoryGB) {
+            Update-ReturnCode -ReturnCode 1
+            $outObject.logging += "Memory check failed. Available memory: $($memory / 1GB)GB\n"
         }
-    } catch {
-        $outObject.returnCode = -1
-        $outObject.logging += "Memory check error: $_.Exception.Message. "
-    }
 
-    # Check Processor
-    try {
-        $cpu = Get-WmiObject -Class Win32_Processor | Select-Object -First 1
-        if ($cpu.AddressWidth -ne $RequiredAddressWidth -or $cpu.MaxClockSpeed -lt $MinClockSpeedMHz -or $cpu.NumberOfLogicalProcessors -lt $MinLogicalCores) {
-            $outObject.returnCode = 1
-            $outObject.returnReason += "Processor does not meet requirements. "
-            $outObject.logging += "Processor check failed: AddressWidth=$($cpu.AddressWidth), MaxClockSpeed=$($cpu.MaxClockSpeed), LogicalCores=$($cpu.NumberOfLogicalProcessors). "
+        # CPU Check
+        $cpu = Get-WmiObject -Class Win32_Processor
+        if ($cpu.NumberOfLogicalProcessors -lt $MinLogicalCores -or $cpu.MaxClockSpeed -lt $MinClockSpeedMHz -or $cpu.AddressWidth -ne $RequiredAddressWidth) {
+            Update-ReturnCode -ReturnCode 1
+            $outObject.logging += "CPU check failed.\n"
         }
-    } catch {
-        $outObject.returnCode = -1
-        $outObject.logging += "Processor check error: $_.Exception.Message. "
-    }
 
-    # Check TPM
-    try {
+        # TPM Check
         $tpm = Get-Tpm
-        if (-not $tpm.TpmPresent -or $tpm.SpecVersion -lt 2.0) {
-            $outObject.returnCode = 1
-            $outObject.returnReason += "TPM version not sufficient. "
-            $outObject.logging += "TPM check failed: Version=$($tpm.SpecVersion). "
+        if (-not $tpm.TpmPresent -or $tpm.SpecVersion -lt 2) {
+            Update-ReturnCode -ReturnCode 1
+            $outObject.logging += "TPM check failed.\n"
         }
-    } catch {
-        $outObject.returnCode = -1
-        $outObject.logging += "TPM check error: $_.Exception.Message. "
-    }
 
-    # Check Secure Boot
-    try {
-        if (-not (Confirm-SecureBootUEFI)) {
-            $outObject.returnCode = 1
-            $outObject.returnReason += "Secure Boot not enabled. "
-            $outObject.logging += "Secure Boot check failed. "
+        # Secure Boot Check
+        try {
+            if (-not (Confirm-SecureBootUEFI)) {
+                Update-ReturnCode -ReturnCode 1
+                $outObject.logging += "Secure Boot check failed.\n"
+            }
+        } catch {
+            Update-ReturnCode -ReturnCode -1
+            $outObject.logging += "Secure Boot check exception: $_\n"
         }
-    } catch {
-        $outObject.returnCode = -1
-        $outObject.logging += "Secure Boot check error: $_.Exception.Message. "
-    }
 
-    # Generate Results
-    switch ($outObject.returnCode) {
-        0 {
+        if ($outObject.returnCode -eq 0) {
             $outObject.returnResult = "CAPABLE"
-            "Computer Name: $env:Computername`n" | Out-File -FilePath $CapableFile
-            "Time: $(Get-Date)`n" | Out-File -FilePath $CapableFile -Append
-            $outObject | Format-List | Out-File -FilePath $CapableFile -Append
-
-            # Download and execute installer
-            $WebClient = New-Object System.Net.WebClient
-            $installerPath = Join-Path $OutputPath "Windows11.exe"
-            $WebClient.DownloadFile($Windows11InstallerUrl, $installerPath)
-            Start-Process -FilePath $installerPath -ArgumentList '/SkipEULA /Auto Upgrade /NoRestartUI' -Wait
-        }
-        1 {
+            "Computer Name: $env:ComputerName`nTime: $(Get-Date)\n" | Out-File -FilePath $CapableFile
+            $outObject | Out-File -FilePath $CapableFile -Append
+        } else {
             $outObject.returnResult = "NOT CAPABLE"
-            "Computer Name: $env:Computername`n" | Out-File -FilePath $NotCapableFile
-            "Time: $(Get-Date)`n" | Out-File -FilePath $NotCapableFile -Append
-            $outObject | Format-List | Out-File -FilePath $NotCapableFile -Append
+            "Computer Name: $env:ComputerName`nTime: $(Get-Date)\n" | Out-File -FilePath $NotCapableFile
+            $outObject | Out-File -FilePath $NotCapableFile -Append
+        }
+
+        if (Test-Path -Path $CapableFile) {
+            # Download and run upgrade tool
+            $UpgradeToolPath = Join-Path -Path $OutputFolder -ChildPath "Windows11.exe"
+            Invoke-WebRequest -Uri $UpgradeToolURL -OutFile $UpgradeToolPath
+            Start-Process -FilePath $UpgradeToolPath -ArgumentList '/SkipEULA /Auto Upgrade /NoRestartUI' -Wait
+        } else {
             Write-Host "Asset not eligible for Windows 11 upgrade. Check $NotCapableFile"
         }
-        default {
-            Write-Host "An error occurred during the check. Logs saved to $OutputPath"
-        }
+
+    } catch {
+        Update-ReturnCode -ReturnCode -1
+        $outObject.logging += "Error: $_\n"
     }
+
+    return $outObject
 }
+
+# Entry point
+Invoke-Windows11Upgrade
