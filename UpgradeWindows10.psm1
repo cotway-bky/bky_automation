@@ -2,7 +2,7 @@
 # This script checks system compatibility for a Windows 11 upgrade and optionally initiates the upgrade process.
 
 function Invoke-Windows11Upgrade {
-    param (
+       param (
         [string]$OutputFolder = "C:\temp",
         [string]$UpgradeToolURL = "https://go.microsoft.com/fwlink/?linkid=2171764"
     )
@@ -80,12 +80,10 @@ function Invoke-Windows11Upgrade {
 
         if ($outObject.returnCode -eq 0) {
             $outObject.returnResult = "CAPABLE"
-            "Computer Name: $env:ComputerName`nTime: $(Get-Date)\n" | Out-File -FilePath $CapableFile
-            $outObject | Out-File -FilePath $CapableFile -Append
+            "CAPABLE" | Out-File -FilePath $CapableFile
         } else {
             $outObject.returnResult = "NOT CAPABLE"
-            "Computer Name: $env:ComputerName`nTime: $(Get-Date)\n" | Out-File -FilePath $NotCapableFile
-            $outObject | Out-File -FilePath $NotCapableFile -Append
+            "NOT CAPABLE" | Out-File -FilePath $NotCapableFile
         }
 
         if (Test-Path -Path $CapableFile) {
@@ -104,6 +102,5 @@ function Invoke-Windows11Upgrade {
 
     return $outObject
 }
-
 # Entry point
 Invoke-Windows11Upgrade
